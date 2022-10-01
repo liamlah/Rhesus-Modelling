@@ -1,10 +1,27 @@
 #Rhesus population calculator python 3.10.4
 #Created by Liam Jones
+
+#todo list:
+	#start using f-strings
+	#clean up arguments in functions
+	#replace lists with arrays where possible then clean up
+	#work on GUI branch
+
+
 import random
 from random import choice
 import matplotlib.pyplot as plt
 import numpy as np
-
+from os import system, name
+#function from g4g to clear screen output while calculating generations
+def clear():
+    # for windows
+    if name == 'nt':
+        _ = system('cls')
+ 
+    # for mac and linux(here, os.name is 'posix')
+    else:
+        _ = system('clear')
 
 nextgenalleles = []
 thisgenalleles = []
@@ -111,12 +128,14 @@ def runsim(startprevalence,startpopulationsize,generationtime,averagefamilysize,
 #This function first generates a family size around a gaussian distribution, so not every family is exactly the same size. But all families are guaranteed to conceive at least one child.
 #This function does not pass to another function, once it has finished iterating, the program will move back up to the generations function to complete the for loop and pass to the endresults function. 
 def conception(averagefamilysize,child,father,mother,generationtime,obituaries,generationpopulationcount,frequencylistP,frequencylistN,generationgraph):
+	#print("new family")
 	familydistribution = random.gauss(averagefamilysize, averagefamilysize/4)
 	if familydistribution < 1:
 		familydistribution = 1
 	familydistribution = round(familydistribution)
 	#The for loop iterates for each child conceived. 1 or 0 is picked at random, and this determines whether the first or second allele is passed from the parent to child. Simulating the randomness of meiosis
 	#child.phenotype then reformats these two number into the same tuple (x,x) as a parent
+	mothersensitised = 0 #each mother starts off unsensitised, and rh- mothers can become sensitised. Sensitising child survives, but subsequent mismatches die
 	for y in range (0, familydistribution):
 		zygosity = random.randint(0,1)
 		if  zygosity == 1:
@@ -129,13 +148,18 @@ def conception(averagefamilysize,child,father,mother,generationtime,obituaries,g
 		else:
 			child.allele2 = mother.allele2
 		child.phenotype = (child.allele1, child.allele2) 
-		#this is a bit of a hack - if you have a better idea on how to sensitise the mother, let me know
+		#looks like I fixed issue with sensitisation in previous code. Now each rh- mother is sensitised in a way that correctly models the real world
 		#if the child and mother are incompatible, the child is added to the obituaries list, if not, the child is added to the next generation list.
-		if mother.phenotype == (0,0) and child.phenotype !=(0,0)  and y>0: #mother.sensitised >0: 
+		if mother.phenotype == (0,0) and child.phenotype !=(0,0)  and mothersensitised == 1: #mother.sensitised >0: 
 			obituaries.append(1)
 			#print(len(obituaries), "this is an obituary")
+		elif mother.phenotype == (0,0) and child.phenotype !=(0,0)  and mothersensitised == 0:
+			#print("mother just got sensitised")
+			mothersensitised = 1
+			nextgenalleles.append(child.phenotype)
 		else:
 			nextgenalleles.append(child.phenotype)
+			#print("mother had child without incident")
 	storecountpositivehetero =+ nextgenalleles.count((1 , 0)) + nextgenalleles.count((0 , 1))
 	storecountnegativehomo=+ nextgenalleles.count((0 , 0))
 	storecountpositivehomo =+ nextgenalleles.count((1 , 1))
@@ -147,6 +171,7 @@ def generations(generationtime,thisgenalleles,nextgenalleles,father,mother,avera
 	obituarycounter = []
 	for x in range(0, generationtime):
 		if generationgraph !=[]:
+			clear()
 			print("calculating generation:",generationgraph[-1]+1)
 		generationgraph.append(x)
 		generationalobituary = len(obituaries)
@@ -230,13 +255,14 @@ def endresults(generationgraph,totalpos,totalpos2,frequencylistP,frequencylistN,
 	generationalobituary = len(obituaries)
 	obituarycounter.append(generationalobituary)
 	print(obituarycounter,"this is obitcount")
-	# Create figure and axis #1
-	fig, ax1 = plt.subplots()
-	# plot line chart on axis #1
-	ax1.plot(generationgraph, frequencylistP, color='red', marker='o', label ='Rh+')
-	ax1.plot(generationgraph, frequencylistN, color='black', marker='D', label ='Rh-') 
+	#begin settings for graph creation
+	fig, ax1 = plt.subplots(num='Rhesus Allele Results')
+	#fig.suptitle('Modelled frequency of rhesus alleles in a population for which haemolytic disease of the foetus and newborn(HDFN) is untreated.', wrap=True)
+	plt.title('Modelled frequency of rhesus alleles in a population for which haemolytic disease of the foetus and newborn(HDFN) is untreated.', wrap=True)
+	ax1.plot(generationgraph, frequencylistP, color='red', linestyle = 'None',  marker='D', label ='Rh+')
+	ax1.plot(generationgraph, frequencylistN, color='black', linestyle = 'None', marker='o', label ='Rh-') 
 	ax1.set_xlim(auto=True)
-	#ax1.set_xlim((min(generationgraph), max(generationgraph)+5, 5))
+	#manually setting axis scale - delete later if auto works fine
 	"""if len(generationgraph) > 200:
 		ax1.set_xlim((min(generationgraph), max(generationgraph)+5, 5))
 	elif len(generationgraph) > 150:
@@ -245,26 +271,27 @@ def endresults(generationgraph,totalpos,totalpos2,frequencylistP,frequencylistN,
 		ax1.set_xlim((min(generationgraph), max(generationgraph)+2, 2))
 	else:	
 		ax1.set_xlim((min(generationgraph), max(generationgraph)+1, 1))"""
+	#setting details for allele frequency part
+	ax1.set_xlabel('Generation number')
 	ax1.set_ylabel('Allele frequency')
 	ax1.set_ylim(0.0, 1.1, 0.1)
 	ax1.grid(True)
-	#ax1.legend(['average_temp'], loc="upper left")
-	# set up the 2nd axis
-	ax2 = ax1.twinx()
-	# plot bar chart on axis #2
+	plt.legend(loc='upper left')
+	#converting list to array - Replacing all lists with arrays from the start is on todo list
 	obituarycounterarray = np.array(obituarycounter)
 	generationpopulationcountarray = np.array(generationpopulationcount)
 	totalpopulation = obituarycounterarray + generationpopulationcountarray
 	obitpercent = (obituarycounterarray/totalpopulation)*100 
-	ax2.bar(generationgraph, obitpercent, width=0.5, alpha=0.5, color='orange')
-	#ax2.grid(False) # turn off grid #2
-	ax2.set_ylabel('percentage of deaths per generation', color ='orange')
+	#setting details to show how many deaths are occurring in a generation from HDFN
+	ax2 = ax1.twinx()
+	ax2.bar(generationgraph, obitpercent, width=0.5, alpha=0.5, color='darkorange', label ='HDFN(right)')
+	ax2.set_ylabel('%'' of deaths per generation due to HDFN', color ='darkorange')
 	ax2.set_ylim(0, max(obitpercent))
 	ax2.set_ylim(0,100)
-	#ax2.legend(['average_percipitation_mm'], loc="upper right")
+	plt.legend(loc='upper right')
 	plt.show()
 
-	
+	#original single plot code, remove if no longer needed for reference
 	"""plt.plot(generationgraph,frequencylistP, color='red', marker='o', label ='Rh+')
 	plt.plot(generationgraph,frequencylistN, color='black', marker='D', label ='Rh-')
 	plt.bar(generationgraph, obituarycounter, color = 'yellow', label ='total deaths')
